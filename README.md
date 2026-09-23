@@ -137,8 +137,10 @@ If using a release ZIP, the command set is pre-installed inside the plugin. For 
 | `store_project_data` | Store project metadata in local database |
 | `store_room_data` | Store room metadata in local database |
 | `query_stored_data` | Query stored project and room data |
-| `send_code_to_revit` | Send C# code to Revit to execute |
 | `say_hello` | Display a greeting dialog in Revit (connection test) |
+
+> [!NOTE]
+> This fork does not include `send_code_to_revit` (arbitrary C# execution in Revit). It was removed as part of addressing a [security review](CLAUDE.md#security) finding — see that section for details.
 
 ## Testing
 

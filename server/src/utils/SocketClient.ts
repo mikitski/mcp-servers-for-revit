@@ -1,4 +1,5 @@
 import * as net from "net";
+import { readSessionToken } from "./authToken.js";
 
 export class RevitClientConnection {
   host: string;
@@ -106,6 +107,10 @@ export class RevitClientConnection {
           method: command,
           params: params,
           id: requestId,
+          // Echoes the per-session token the plugin generated in SocketService,
+          // required since the socket has no other authentication (see the
+          // security review's F1 finding).
+          token: readSessionToken(),
         };
 
         // 存储回调函数

@@ -2,6 +2,7 @@
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using Autodesk.Revit.UI;
@@ -25,6 +26,11 @@ namespace revit_mcp_plugin.Core
         private ICommandRegistry _commandRegistry;
         private ILogger _logger;
         private CommandExecutor _commandExecutor;
+        private string _authToken;
+
+        // JSON-RPC reserves -32768..-32000 for predefined errors; this is an
+        // implementation-defined server error in that range.
+        private const int UnauthorizedErrorCode = -32001;
 
         public static SocketService Instance
         {
@@ -92,7 +98,56 @@ namespace revit_mcp_plugin.Core
                 _commandRegistry, _logger, configManager, _uiApp);
             commandManager.LoadCommands();
 
+            // 生成本次会话的认证令牌，并写入供 MCP 服务器读取
+            // Generate this session's auth token and persist it for the MCP server to read.
+            _authToken = GenerateAuthToken();
+            PersistAuthToken(_authToken);
+
             _logger.Info($"Socket service initialized on port {_port}");
+        }
+
+        private static string GenerateAuthToken()
+        {
+            byte[] bytes = new byte[32];
+            using (var rng = RandomNumberGenerator.Create())
+            {
+                rng.GetBytes(bytes);
+            }
+            return Convert.ToBase64String(bytes);
+        }
+
+        private void PersistAuthToken(string token)
+        {
+            try
+            {
+                File.WriteAllText(PathManager.GetAuthTokenFilePath(), token);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error("无法写入会话令牌文件: {0}\nFailed to write session token file: {0}", ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Constant-time comparison so a mismatched token doesn't leak timing information.
+        /// </summary>
+        private bool IsTokenValid(string providedToken)
+        {
+            if (string.IsNullOrEmpty(_authToken) || string.IsNullOrEmpty(providedToken))
+                return false;
+
+            byte[] expected = Encoding.UTF8.GetBytes(_authToken);
+            byte[] actual = Encoding.UTF8.GetBytes(providedToken);
+
+            if (expected.Length != actual.Length)
+                return false;
+
+            int diff = 0;
+            for (int i = 0; i < expected.Length; i++)
+            {
+                diff |= expected[i] ^ actual[i];
+            }
+            return diff == 0;
         }
 
         public void Start()
@@ -102,7 +157,9 @@ namespace revit_mcp_plugin.Core
             try
             {
                 _isRunning = true;
-                _listener = new TcpListener(IPAddress.Any, _port);
+                // Bind loopback only: this channel has no transport-level auth beyond the
+                // per-session token, so it must never be reachable from the network.
+                _listener = new TcpListener(IPAddress.Loopback, _port);
                 _listener.Start();
 
                 _listenerThread = new Thread(ListenForClients)
@@ -220,13 +277,37 @@ namespace revit_mcp_plugin.Core
 
         private string ProcessJsonRPCRequest(string requestJson)
         {
+            JObject rawRequest;
+
+            try
+            {
+                rawRequest = JObject.Parse(requestJson);
+            }
+            catch (JsonException)
+            {
+                // JSON解析错误
+                // JSON parsing error.
+                return CreateErrorResponse(null, JsonRPCErrorCodes.ParseError, "Invalid JSON");
+            }
+
+            // 校验认证令牌 - 在触碰命令注册表或执行任何命令之前拒绝
+            // Validate the auth token before touching the command registry or executing anything.
+            string providedToken = rawRequest["token"]?.Value<string>();
+            if (!IsTokenValid(providedToken))
+            {
+                _logger.Warning("拒绝未授权的请求\nRejected unauthorized request.");
+                return CreateErrorResponse(
+                    rawRequest["id"]?.ToString(),
+                    UnauthorizedErrorCode,
+                    "Unauthorized: missing or invalid token"
+                );
+            }
+
             JsonRPCRequest request;
 
             try
             {
-                // 解析JSON-RPC请求
-                // Parse JSON-RPC requests.
-                request = JsonConvert.DeserializeObject<JsonRPCRequest>(requestJson);
+                request = rawRequest.ToObject<JsonRPCRequest>();
 
                 // 验证请求格式是否有效
                 // Verify that the request format is valid.
