@@ -140,7 +140,7 @@ If using a release ZIP, the command set is pre-installed inside the plugin. For 
 | `say_hello` | Display a greeting dialog in Revit (connection test) |
 
 > [!NOTE]
-> This fork does not include `send_code_to_revit` (arbitrary C# execution in Revit). It was removed as part of addressing a [security review](CLAUDE.md#security) finding — see that section for details.
+> This fork does not include `send_code_to_revit` (arbitrary C# execution in Revit). It was removed as part of addressing a finding in [an internal security review](docs/security-reviews/2026-09-21-security-review.md) — see `CLAUDE.md#security` for how the fix works.
 
 ## Testing
 

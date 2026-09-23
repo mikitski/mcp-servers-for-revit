@@ -47,12 +47,26 @@ A new capability typically requires changes in all three projects:
 
 ## Security
 
-An internal security review (2026-09-21) found this channel unauthenticated and network-reachable, plus an arbitrary-code-execution tool with no sandboxing. Two of its Critical findings have been fixed here so far:
+The Revit↔MCP socket (`plugin/Core/SocketService.cs`) binds loopback only and requires a per-session auth token on every request:
 
-- **Unauthenticated, LAN-reachable command channel.** `SocketService` now binds `IPAddress.Loopback` (was `IPAddress.Any`) and requires a per-session auth token: `Initialize()` generates a random token, writes it via `PathManager.GetAuthTokenFilePath()` (a fixed, Revit-version-independent path under the user's local app data), and `ProcessJsonRPCRequest` rejects any request whose `token` field doesn't match before it ever touches the command registry. `server/src/utils/authToken.ts` reads that same file and `SocketClient.ts` sends the token on every request. **This is a breaking wire-protocol change** — plugin and server must be updated together (they already ship together in each release).
-- **Arbitrary C# execution (`send_code_to_revit`).** Removed entirely rather than sandboxed: the TS tool, the `commandset/Commands/ExecuteDynamicCode/` command + handler, its `command.json` entry, and the now-unused `Microsoft.CodeAnalysis.CSharp` (Roslyn) package reference are all gone. There is no in-repo replacement. If this capability is ever reintroduced, it needs an explicit compilation reference allowlist, syntax-level rejection of `System.Diagnostics`/`System.IO`/`System.Net`/`System.Reflection`, a timeout, `AssemblyLoadContext` isolation, and an audit log — not just an off-by-default checkbox.
+- The plugin generates a random token in `Initialize()` and writes it to `PathManager.GetAuthTokenFilePath()` — a fixed, Revit-version-independent path under the user's local app data (not the per-version Addins folder), so the server can find it regardless of which Revit install produced it.
+- Every request must echo that token back in a top-level `token` field. `ProcessJsonRPCRequest` rejects a missing/mismatched token before it ever touches the command registry.
+- `server/src/utils/authToken.ts` reads the same file; `SocketClient.ts` sends the token on every outgoing command.
+- Changing this protocol is a breaking change: the plugin and server must always be updated together (they already ship together in each release).
 
-Not yet addressed by this fork: destructive operations (`delete_element`, `operate_element` delete) still have no confirmation/dry-run; the socket has no message framing or size cap, and several error paths still show a modal `TaskDialog` on a socket-reachable code path (remote DoS); NuGet dependency versions still float (`$(RevitVersion).*`); release DLLs are unsigned.
+`send_code_to_revit` (arbitrary C# execution in Revit) has been removed from this fork and has no in-repo replacement. If it's ever reintroduced, it needs an explicit compilation reference allowlist, syntax-level rejection of `System.Diagnostics`/`System.IO`/`System.Net`/`System.Reflection`, a timeout, `AssemblyLoadContext` isolation, and an audit log — see `docs/security-reviews/2026-09-21-security-review.md` (finding F2) for the full threat model.
+
+Known gaps not yet addressed in this fork are tracked in `BACKLOG.md`, not here.
+
+## Project tracking documents
+
+This file is for durable, current-state instructions only. Status and planning live elsewhere:
+
+- **`CHANGELOG.md`** — notable shipped changes.
+- **`BACKLOG.md`** — known issues/improvements not yet scheduled.
+- **`TODO.md`** — near-term concrete action items.
+- **`PROGRESS.md`** — dated running log of work sessions.
+- **`docs/security-reviews/`** — point-in-time security review reports.
 
 ## Common commands
 
