@@ -260,26 +260,14 @@ mcp-servers-for-revit/
 
 ## Releasing
 
-A single `v*` tag drives the entire release. The [release workflow](.github/workflows/release.yml) automatically:
+`main` is protected — releases go out through a PR, driven entirely by GitHub Actions:
 
-- Builds the Revit plugin + command set for Revit 2020-2026
-- Creates a GitHub release with `mcp-servers-for-revit-vX.Y.Z-Revit<year>.zip` assets
-- Publishes the MCP server to npm as [`mcp-server-for-revit`](https://www.npmjs.com/package/mcp-server-for-revit)
-
-To create a release:
-
-1. Run the bump script (updates `server/package.json`, `server/package-lock.json`, and `plugin/Properties/AssemblyInfo.cs`, then commits and tags):
-   ```powershell
-   ./scripts/release.ps1 -Version X.Y.Z
-   ```
-
-2. Push to trigger the workflow:
-   ```bash
-   git push origin main --tags
-   ```
+1. Run the [Prepare Release workflow](.github/workflows/prepare-release.yml) (Actions tab → "Prepare Release" → Run workflow, or `gh workflow run prepare-release.yml -f version=X.Y.Z`). It bumps `server/package.json`, `server/package-lock.json`, and `plugin/Properties/AssemblyInfo.cs` on a new `release/vX.Y.Z` branch and opens a PR into `main`.
+2. Review and merge the PR.
+3. Merging triggers the [release workflow](.github/workflows/release.yml), which tags the merge commit, builds the Revit plugin + command set for Revit 2020-2026, and creates a GitHub release with `mcp-servers-for-revit-vX.Y.Z-Revit<year>.zip` assets.
 
 > [!NOTE]
-> npm publish uses [trusted publishing](https://docs.npmjs.com/trusted-publishers/) via OIDC — no npm token is required. Provenance attestation is generated automatically.
+> This fork does not publish to npm — the [`mcp-server-for-revit`](https://www.npmjs.com/package/mcp-server-for-revit) package name belongs to the upstream project.
 
 ## Acknowledgements
 

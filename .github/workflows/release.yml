@@ -1,16 +1,55 @@
 name: Release
 
+# Triggered when server/package.json changes on main (i.e. a version-bump PR
+# from prepare-release.yml gets merged). Tags the merge commit, builds the
+# plugin/command set for every supported Revit version, and publishes a
+# GitHub release with the zipped add-in layouts.
+
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+    paths:
+      - 'server/package.json'
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
+  tag:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+      should_release: ${{ steps.check.outputs.should_release }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: check
+        run: |
+          VERSION=$(node -p "require('./server/package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if git rev-parse "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION already exists - nothing to release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: steps.check.outputs.should_release == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ steps.check.outputs.version }}"
+          git push origin "v${{ steps.check.outputs.version }}"
+
   build:
+    needs: tag
+    if: needs.tag.outputs.should_release == 'true'
     runs-on: windows-latest
 
     steps:
@@ -72,7 +111,7 @@ jobs:
       # ---------------------------------------------------------------
       - name: Create release assets
         run: |
-          $version = "${{ github.ref_name }}"
+          $version = "v${{ needs.tag.outputs.version }}"
           $outputDir = "release-assets"
           New-Item -ItemType Directory -Force -Path $outputDir
 
@@ -101,33 +140,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ needs.tag.outputs.version }}
           files: release-assets/*.zip
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  npm-publish:
-    runs-on: ubuntu-latest
-    needs: build
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-
-      - name: Upgrade npm
-        run: npm install -g npm@latest
-
-      - name: Install and build
-        working-directory: server
-        run: |
-          npm ci
-          npm run build
-
-      - name: Publish to npm
-        working-directory: server
-        run: npm publish --access public
