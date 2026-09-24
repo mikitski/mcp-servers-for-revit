@@ -1,55 +1,34 @@
-name: Release
+name: Build
 
-# Triggered when server/package.json changes on main (i.e. a version-bump PR
-# from prepare-release.yml gets merged). Tags the merge commit, builds the
-# plugin/command set for every supported Revit version, and publishes a
-# GitHub release with the zipped add-in layouts.
+# Build-only workflow: compiles the MCP server and the plugin/command set for
+# every supported Revit version and uploads the deployable AddIn layouts as
+# downloadable workflow artifacts. Does not tag, release, or publish anything
+# (see release.yml for that). Two purposes:
+#
+# 1. workflow_dispatch: get a real, Windows-built package to manually install
+#    and test on an actual Revit machine, without needing dotnet/Visual
+#    Studio installed anywhere yourself.
+# 2. pull_request: catch build breaks before merge (previously nothing did).
+#
+# See docs/manual-verification.md for how to install and smoke-test the
+# resulting package.
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+  pull_request:
     paths:
-      - 'server/package.json'
+      - 'plugin/**'
+      - 'commandset/**'
+      - 'server/**'
+      - 'command.json'
+      - 'mcp-servers-for-revit.sln'
+      - '.github/workflows/build.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  tag:
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.check.outputs.version }}
-      should_release: ${{ steps.check.outputs.should_release }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - id: check
-        run: |
-          VERSION=$(node -p "require('./server/package.json').version")
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          if git rev-parse "refs/tags/v$VERSION" >/dev/null 2>&1; then
-            echo "Tag v$VERSION already exists - nothing to release."
-            echo "should_release=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "should_release=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Create and push tag
-        if: steps.check.outputs.should_release == 'true'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v${{ steps.check.outputs.version }}"
-          git push origin "v${{ steps.check.outputs.version }}"
-
   build:
-    needs: tag
-    if: needs.tag.outputs.should_release == 'true'
     runs-on: windows-latest
 
     steps:
@@ -105,14 +84,12 @@ jobs:
         run: dotnet build mcp-servers-for-revit.sln -c "Release R26"
 
       # ---------------------------------------------------------------
-      # Create Release Assets
-      # The AddIn output already contains the complete deployable layout
-      # (plugin + commandset) thanks to the DeployCommandSet build target.
+      # Package the AddIn layouts, one subfolder per Revit version, into
+      # a single downloadable artifact.
       # ---------------------------------------------------------------
-      - name: Create release assets
+      - name: Package build artifacts
         run: |
-          $version = "v${{ needs.tag.outputs.version }}"
-          $outputDir = "release-assets"
+          $outputDir = "build-artifacts"
           New-Item -ItemType Directory -Force -Path $outputDir
 
           $revitVersions = @(
@@ -128,20 +105,18 @@ jobs:
           foreach ($rv in $revitVersions) {
             $addinDir = "plugin/bin/AddIn $($rv.Year) $($rv.Config)"
             if (Test-Path $addinDir) {
-              $zipName = "$outputDir/mcp-servers-for-revit-$version-Revit$($rv.Year).zip"
-              Compress-Archive -Path "$addinDir/*" -DestinationPath $zipName
-              Write-Host "Created $zipName"
+              $dest = "$outputDir/Revit$($rv.Year)"
+              Copy-Item -Recurse -Path $addinDir -Destination $dest
+              Write-Host "Packaged $dest"
             } else {
               Write-Host "Warning: AddIn output not found: $addinDir"
             }
           }
         shell: pwsh
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: v${{ needs.tag.outputs.version }}
-          files: release-assets/*.zip
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: revit-mcp-plugin-build-${{ github.run_id }}
+          path: build-artifacts/*
+          retention-days: 14

@@ -5,6 +5,13 @@ for context that doesn't belong in `CLAUDE.md` (instructions), `CHANGELOG.md`
 (shipped changes), or `BACKLOG.md`/`TODO.md` (open work). Newest entries at
 the top.
 
+## 2026-09-24
+
+- Merged PR #2 (F1/F2 security fixes, security review, tracking docs) into `main` (`4addbb6`).
+- User has real Revit access but needs to coordinate getting builds onto that machine manually — no local `dotnet`/Visual Studio there either. Added `.github/workflows/build.yml`: a `workflow_dispatch` + PR-triggered build that produces a real Windows-built package (all 7 Revit-version AddIn layouts) as a downloadable Actions artifact, no local toolchain needed at all. This also closes the "no CI on PRs" backlog item.
+- Added `docs/manual-verification.md`: step-by-step install + smoke-test instructions for verifying a build on real Revit, including the F1 auth-fix checks (loopback-only bind, token file, unauthorized-request rejection).
+- `build.yml`'s first-ever live run (triggered by its own PR) failed at "Build MCP Server": Node 18 can't install `better-sqlite3` (no prebuild for Node 18, native compile needs VS build tools absent on the runner). This is a pre-existing bug in `release.yml` too (same Node 18 setup, copied from there), just never exercised since no real release has run since the GHA migration. Fixed both workflows to use Node 22 (matches `server/package.json`'s `engines.node: >=20.0.0`).
+
 ## 2026-09-23
 
 - Enabled branch protection on `main` (PR required, no direct pushes).
