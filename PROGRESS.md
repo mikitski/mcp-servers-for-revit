@@ -5,6 +5,12 @@ for context that doesn't belong in `CLAUDE.md` (instructions), `CHANGELOG.md`
 (shipped changes), or `BACKLOG.md`/`TODO.md` (open work). Newest entries at
 the top.
 
+## 2026-09-24
+
+- Merged PR #2 (F1/F2 security fixes, security review, tracking docs) into `main` (`4addbb6`).
+- User has real Revit access but needs to coordinate getting builds onto that machine manually — no local `dotnet`/Visual Studio there either. Added `.github/workflows/build.yml`: a `workflow_dispatch` + PR-triggered build that produces a real Windows-built package (all 7 Revit-version AddIn layouts) as a downloadable Actions artifact, no local toolchain needed at all. This also closes the "no CI on PRs" backlog item.
+- Added `docs/manual-verification.md`: step-by-step install + smoke-test instructions for verifying a build on real Revit, including the F1 auth-fix checks (loopback-only bind, token file, unauthorized-request rejection).
+
 ## 2026-09-23
 
 - Enabled branch protection on `main` (PR required, no direct pushes).

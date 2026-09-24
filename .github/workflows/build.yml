@@ -1,0 +1,122 @@
+name: Build
+
+# Build-only workflow: compiles the MCP server and the plugin/command set for
+# every supported Revit version and uploads the deployable AddIn layouts as
+# downloadable workflow artifacts. Does not tag, release, or publish anything
+# (see release.yml for that). Two purposes:
+#
+# 1. workflow_dispatch: get a real, Windows-built package to manually install
+#    and test on an actual Revit machine, without needing dotnet/Visual
+#    Studio installed anywhere yourself.
+# 2. pull_request: catch build breaks before merge (previously nothing did).
+#
+# See docs/manual-verification.md for how to install and smoke-test the
+# resulting package.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'plugin/**'
+      - 'commandset/**'
+      - 'server/**'
+      - 'command.json'
+      - 'mcp-servers-for-revit.sln'
+      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      # ---------------------------------------------------------------
+      # Build MCP Server (TypeScript)
+      # ---------------------------------------------------------------
+      - name: Build MCP Server
+        working-directory: server
+        run: |
+          npm ci
+          npm run build
+
+      # ---------------------------------------------------------------
+      # Build Plugin + CommandSet via combined solution
+      # The commandset's DeployCommandSet target automatically copies
+      # its output into the plugin's AddIn layout.
+      # ---------------------------------------------------------------
+      - name: Build Revit 2020 (.NET Framework 4.8)
+        run: msbuild mcp-servers-for-revit.sln -p:Configuration="Release R20" -restore
+
+      - name: Build Revit 2021 (.NET Framework 4.8)
+        run: msbuild mcp-servers-for-revit.sln -p:Configuration="Release R21" -restore
+
+      - name: Build Revit 2022 (.NET Framework 4.8)
+        run: msbuild mcp-servers-for-revit.sln -p:Configuration="Release R22" -restore
+
+      - name: Build Revit 2023 (.NET Framework 4.8)
+        run: msbuild mcp-servers-for-revit.sln -p:Configuration="Release R23" -restore
+
+      - name: Build Revit 2024 (.NET Framework 4.8)
+        run: msbuild mcp-servers-for-revit.sln -p:Configuration="Release R24" -restore
+
+      - name: Build Revit 2025 (.NET 8)
+        run: dotnet build mcp-servers-for-revit.sln -c "Release R25"
+
+      - name: Build Revit 2026 (.NET 8)
+        run: dotnet build mcp-servers-for-revit.sln -c "Release R26"
+
+      # ---------------------------------------------------------------
+      # Package the AddIn layouts, one subfolder per Revit version, into
+      # a single downloadable artifact.
+      # ---------------------------------------------------------------
+      - name: Package build artifacts
+        run: |
+          $outputDir = "build-artifacts"
+          New-Item -ItemType Directory -Force -Path $outputDir
+
+          $revitVersions = @(
+            @{ Config = "Release R20"; Year = "2020" },
+            @{ Config = "Release R21"; Year = "2021" },
+            @{ Config = "Release R22"; Year = "2022" },
+            @{ Config = "Release R23"; Year = "2023" },
+            @{ Config = "Release R24"; Year = "2024" },
+            @{ Config = "Release R25"; Year = "2025" },
+            @{ Config = "Release R26"; Year = "2026" }
+          )
+
+          foreach ($rv in $revitVersions) {
+            $addinDir = "plugin/bin/AddIn $($rv.Year) $($rv.Config)"
+            if (Test-Path $addinDir) {
+              $dest = "$outputDir/Revit$($rv.Year)"
+              Copy-Item -Recurse -Path $addinDir -Destination $dest
+              Write-Host "Packaged $dest"
+            } else {
+              Write-Host "Warning: AddIn output not found: $addinDir"
+            }
+          }
+        shell: pwsh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: revit-mcp-plugin-build-${{ github.run_id }}
+          path: build-artifacts/*
+          retention-days: 14

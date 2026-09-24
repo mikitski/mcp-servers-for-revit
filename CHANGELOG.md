@@ -18,3 +18,5 @@ For the full commit history, use `git log`.
 - `CLAUDE.md` documenting architecture, dev commands, and the development workflow.
 - `docs/security-reviews/` with the internal security review this fork is responding to.
 - `BACKLOG.md`, `TODO.md`, `PROGRESS.md` for tracking work outside of `CLAUDE.md`.
+- `.github/workflows/build.yml`: build-only workflow (manual dispatch, plus automatic runs on PRs touching `plugin/`/`commandset/`/`server/`) that uploads a real Windows-built package as a workflow artifact — no local `dotnet` install needed to get a testable build, and PRs are now actually build-checked before merge.
+- `docs/manual-verification.md`: step-by-step instructions for installing a build on a real Revit machine and smoke-testing the F1 auth fix.
