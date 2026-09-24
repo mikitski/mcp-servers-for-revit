@@ -59,6 +59,30 @@ namespace revit_mcp_plugin.Utils
             return registryFilePath;
         }
         /// <summary>
+        /// Gets the directory used for data shared between the plugin and the MCP
+        /// server that is not tied to a specific Revit version's Addins install
+        /// (e.g. the per-session auth token). Fixed under the user's local app data
+        /// so the Node server can find it without knowing which Revit version/install
+        /// produced it.
+        /// </summary>
+        public static string GetSharedDataDirectoryPath()
+        {
+            string localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string sharedDataDirectory = Path.Combine(localAppData, "revit-mcp-plugin");
+
+            EnsureDirectoryExists(sharedDataDirectory);
+
+            return sharedDataDirectory;
+        }
+        /// <summary>
+        /// Gets the path to the per-session auth token file that the MCP server must
+        /// echo back on every request for SocketService to accept it.
+        /// </summary>
+        public static string GetAuthTokenFilePath()
+        {
+            return Path.Combine(GetSharedDataDirectoryPath(), "session.token");
+        }
+        /// <summary>
         /// Creates a default command registry file with empty commands array
         /// </summary>
         /// <param name="filePath">Path where to create the file</param>

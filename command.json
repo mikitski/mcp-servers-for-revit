@@ -114,11 +114,6 @@
       "assemblyPath": "RevitMCPCommandSet.dll"
     },
     {
-      "commandName": "send_code_to_revit",
-      "description": "Execute dynamic C# code in Revit with access to the Document and Revit API",
-      "assemblyPath": "RevitMCPCommandSet.dll"
-    },
-    {
       "commandName": "create_dimensions",
       "description": "Create dimension annotations between elements or points in the current view",
       "assemblyPath": "RevitMCPCommandSet.dll"

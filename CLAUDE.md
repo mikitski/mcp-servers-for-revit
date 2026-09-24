@@ -30,8 +30,8 @@ Despite the README's "WebSocket" label in its architecture diagram, the wire pro
 
 1. AI client calls an MCP tool → handled in `server/src/tools/<tool>.ts`.
 2. The tool handler calls `withRevitConnection(...)` (`server/src/utils/ConnectionManager.ts`), which serializes access via a module-level mutex (only one in-flight Revit connection at a time) and opens a `RevitClientConnection` (`server/src/utils/SocketClient.ts`).
-3. `RevitClientConnection.sendCommand(method, params)` sends a JSON-RPC request to `localhost:8080` and resolves/rejects based on the JSON-RPC response (2-minute timeout).
-4. In the plugin, `SocketService` accepts the connection, parses the request, and hands it to `CommandExecutor.ExecuteCommand` (`plugin/Core/CommandExecutor.cs`), which looks up the method name in `RevitCommandRegistry`.
+3. `RevitClientConnection.sendCommand(method, params)` sends a JSON-RPC request to `localhost:8080`, including the per-session auth token (`server/src/utils/authToken.ts`, read fresh from disk each call), and resolves/rejects based on the JSON-RPC response (2-minute timeout).
+4. In the plugin, `SocketService` accepts the connection, parses the request, and rejects it if the token doesn't match the one it generated at startup. Requests that pass validate are dispatched directly by `SocketService.ProcessJsonRPCRequest`, which looks up the method name in `RevitCommandRegistry` (note: `CommandExecutor.cs`/`ExecuteCommand` is a parallel, unused dispatch path — dead code, not the live one).
 5. The matched command (in `commandset/Commands/`) is an `ExternalEventCommandBase` subclass pairing a `Command` (implements `IRevitCommand`, parses JSON params) with an `EventHandler` (`commandset/Services/`, implements `IExternalEventHandler`) — Revit API calls must run on Revit's main thread via `ExternalEvent`, so the command raises the event and blocks (`RaiseAndWaitForCompletion`) until the handler signals completion via a `ManualResetEvent`.
 6. The handler's result is serialized back through `CommandExecutor` → `SocketService` → TCP → the TS server → the MCP client.
 
@@ -44,6 +44,29 @@ A new capability typically requires changes in all three projects:
 1. **`server/src/tools/<name>.ts`** — define a zod schema and call `server.tool(name, description, schema, handler)`; the handler calls `withRevitConnection` and `revitClient.sendCommand("<command_name>", params)`. No manual registration needed: `server/src/tools/register.ts` scans the `tools/` directory at startup and auto-invokes any exported function whose name starts with `register`.
 2. **`commandset/Commands/<Name>Command.cs`** + **`commandset/Services/<Name>EventHandler.cs`** — the command's `CommandName` string must match the method name sent from the TS tool. Follow the existing `ExternalEventCommandBase` + `IExternalEventHandler`/`IWaitableExternalEventHandler` pairing pattern.
 3. **`command.json`** (repo root) — add an entry `{ "commandName": ..., "description": ..., "assemblyPath": "RevitMCPCommandSet.dll" }`; the plugin's `CommandManager` reads this file to know which commands to load and enable.
+
+## Security
+
+The Revit↔MCP socket (`plugin/Core/SocketService.cs`) binds loopback only and requires a per-session auth token on every request:
+
+- The plugin generates a random token in `Initialize()` and writes it to `PathManager.GetAuthTokenFilePath()` — a fixed, Revit-version-independent path under the user's local app data (not the per-version Addins folder), so the server can find it regardless of which Revit install produced it.
+- Every request must echo that token back in a top-level `token` field. `ProcessJsonRPCRequest` rejects a missing/mismatched token before it ever touches the command registry.
+- `server/src/utils/authToken.ts` reads the same file; `SocketClient.ts` sends the token on every outgoing command.
+- Changing this protocol is a breaking change: the plugin and server must always be updated together (they already ship together in each release).
+
+`send_code_to_revit` (arbitrary C# execution in Revit) has been removed from this fork and has no in-repo replacement. If it's ever reintroduced, it needs an explicit compilation reference allowlist, syntax-level rejection of `System.Diagnostics`/`System.IO`/`System.Net`/`System.Reflection`, a timeout, `AssemblyLoadContext` isolation, and an audit log — see `docs/security-reviews/2026-09-21-security-review.md` (finding F2) for the full threat model.
+
+Known gaps not yet addressed in this fork are tracked in `BACKLOG.md`, not here.
+
+## Project tracking documents
+
+This file is for durable, current-state instructions only. Status and planning live elsewhere:
+
+- **`CHANGELOG.md`** — notable shipped changes.
+- **`BACKLOG.md`** — known issues/improvements not yet scheduled.
+- **`TODO.md`** — near-term concrete action items.
+- **`PROGRESS.md`** — dated running log of work sessions.
+- **`docs/security-reviews/`** — point-in-time security review reports.
 
 ## Common commands
 
@@ -61,6 +84,27 @@ There is no lint or test script for the server package.
 ### Revit plugin + command set (Windows only)
 
 Open `mcp-servers-for-revit.sln` in Visual Studio or build via `dotnet build`/`msbuild` with one of the per-version configurations, e.g. `Release R26`, `Debug R25`, `Release R20` (covers Revit 2020–2026: 2020–2024 target `net48`, 2025–2026 target `net8.0-windows`). Building the solution assembles the full deployable add-in layout under `plugin/bin/AddIn <year> <config>/`, copying the command set DLLs into the plugin's `Commands/RevitMCPCommandSet/<year>/` folder automatically (see the `DeployCommandSet` target in `commandset/RevitMCPCommandSet.csproj`). Debug builds also copy straight into `%AppData%\Autodesk\Revit\Addins\<version>\` for local iteration.
+
+### Building C# locally without a Windows box
+
+`dotnet`/`msbuild` are not installed in this repo's WSL distro or the Windows host — only Docker is available. Both `plugin/RevitMCPPlugin.csproj` (`UseWPF`+`UseWindowsForms`) and `commandset/RevitMCPCommandSet.csproj` (`UseWPF`) normally refuse to build on Linux (`NETSDK1100: To build a project targeting Windows on this operating system, set the EnableWindowsTargeting property to true.`). Passing `-p:EnableWindowsTargeting=true` works around this for a **compile-only sanity check** — restore + build succeed and produce real DLLs, but they can't be run or tested here (confirmed working for both projects, for both `net48` (`R20`) and `net8.0-windows10.0.19041.0` (`R26`) target frameworks):
+
+```bash
+docker run --rm -v "$(pwd)":/repo -w /repo mcr.microsoft.com/dotnet/sdk:8.0 \
+  dotnet build plugin/RevitMCPPlugin.csproj -c "Debug R26" -p:EnableWindowsTargeting=true
+
+docker run --rm -v "$(pwd)":/repo -w /repo mcr.microsoft.com/dotnet/sdk:8.0 \
+  dotnet build commandset/RevitMCPCommandSet.csproj -c "Debug R26" -p:EnableWindowsTargeting=true
+```
+
+This is a useful pre-PR sanity check for C# syntax/type errors, but it is not a substitute for a real build+run against Revit (see Testing below) and doesn't replace CI.
+
+If `docker pull`/`docker run` fails with a credential-helper error (`error getting credentials`, not an actual auth failure), the `credsStore` configured in `~/.docker/config.json` is broken in this environment; work around it per-invocation with an isolated `DOCKER_CONFIG` pointed at a directory holding just `{}`, rather than editing the real Docker config:
+
+```bash
+mkdir -p /tmp/docker-config-anon && echo '{}' > /tmp/docker-config-anon/config.json
+export DOCKER_CONFIG=/tmp/docker-config-anon
+```
 
 ### Integration tests (`tests/commandset/`, Windows only, requires a running Revit)
 
