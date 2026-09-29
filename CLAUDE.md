@@ -83,19 +83,21 @@ There is no lint or test script for the server package.
 
 ### Revit plugin + command set (Windows only)
 
-Open `mcp-servers-for-revit.sln` in Visual Studio or build via `dotnet build`/`msbuild` with one of the per-version configurations, e.g. `Release R26`, `Debug R25`, `Release R20` (covers Revit 2020–2026: 2020–2024 target `net48`, 2025–2026 target `net8.0-windows`). Building the solution assembles the full deployable add-in layout under `plugin/bin/AddIn <year> <config>/`, copying the command set DLLs into the plugin's `Commands/RevitMCPCommandSet/<year>/` folder automatically (see the `DeployCommandSet` target in `commandset/RevitMCPCommandSet.csproj`). Debug builds also copy straight into `%AppData%\Autodesk\Revit\Addins\<version>\` for local iteration.
+Open `mcp-servers-for-revit.sln` in Visual Studio or build via `dotnet build`/`msbuild` with one of the per-version configurations, e.g. `Release R27`, `Debug R25`, `Release R20` (covers Revit 2020–2027: 2020–2024 target `net48`, 2025–2026 target `net8.0-windows10.0.19041.0`, 2027 targets `net10.0-windows10.0.19041.0` — building R27 requires the .NET 10 SDK installed alongside .NET 8). Building the solution assembles the full deployable add-in layout under `plugin/bin/AddIn <year> <config>/`, copying the command set DLLs into the plugin's `Commands/RevitMCPCommandSet/<year>/` folder automatically (see the `DeployCommandSet` target in `commandset/RevitMCPCommandSet.csproj`). Debug builds also copy straight into `%AppData%\Autodesk\Revit\Addins\<version>\` for local iteration.
 
 ### Building C# locally without a Windows box
 
-`dotnet`/`msbuild` are not installed in this repo's WSL distro or the Windows host — only Docker is available. Both `plugin/RevitMCPPlugin.csproj` (`UseWPF`+`UseWindowsForms`) and `commandset/RevitMCPCommandSet.csproj` (`UseWPF`) normally refuse to build on Linux (`NETSDK1100: To build a project targeting Windows on this operating system, set the EnableWindowsTargeting property to true.`). Passing `-p:EnableWindowsTargeting=true` works around this for a **compile-only sanity check** — restore + build succeed and produce real DLLs, but they can't be run or tested here (confirmed working for both projects, for both `net48` (`R20`) and `net8.0-windows10.0.19041.0` (`R26`) target frameworks):
+`dotnet`/`msbuild` are not installed in this repo's WSL distro or the Windows host — only Docker is available. Both `plugin/RevitMCPPlugin.csproj` (`UseWPF`+`UseWindowsForms`) and `commandset/RevitMCPCommandSet.csproj` (`UseWPF`) normally refuse to build on Linux (`NETSDK1100: To build a project targeting Windows on this operating system, set the EnableWindowsTargeting property to true.`). Passing `-p:EnableWindowsTargeting=true` works around this for a **compile-only sanity check** — restore + build succeed and produce real DLLs, but they can't be run or tested here (confirmed working for both projects, for `net48` (`R20`), `net8.0-windows10.0.19041.0` (`R26`), and `net10.0-windows10.0.19041.0` (`R27`) — use the matching SDK image tag, `mcr.microsoft.com/dotnet/sdk:8.0` or `:10.0`):
 
 ```bash
 docker run --rm -v "$(pwd)":/repo -w /repo mcr.microsoft.com/dotnet/sdk:8.0 \
   dotnet build plugin/RevitMCPPlugin.csproj -c "Debug R26" -p:EnableWindowsTargeting=true
 
-docker run --rm -v "$(pwd)":/repo -w /repo mcr.microsoft.com/dotnet/sdk:8.0 \
-  dotnet build commandset/RevitMCPCommandSet.csproj -c "Debug R26" -p:EnableWindowsTargeting=true
+docker run --rm -v "$(pwd)":/repo -w /repo mcr.microsoft.com/dotnet/sdk:10.0 \
+  dotnet build commandset/RevitMCPCommandSet.csproj -c "Debug R27" -p:EnableWindowsTargeting=true
 ```
+
+Don't mix SDK image versions against the same uncommitted `obj/`/`bin/` output — restore writes a lock file in a format tied to that SDK's NuGet client, and reusing it from a different major SDK version fails with a confusing `Cannot compare the value of a token type 'Number' to text` error. Delete `obj/`/`bin/` (or use a fresh checkout) before switching.
 
 This is a useful pre-PR sanity check for C# syntax/type errors, but it is not a substitute for a real build+run against Revit (see Testing below), and it's a fallback for local iteration — `.github/workflows/build.yml` (below) is the authoritative build.
 

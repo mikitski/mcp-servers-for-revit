@@ -30,7 +30,7 @@ The **MCP Server** (TypeScript) translates tool calls from AI clients into WebSo
 ## Requirements
 
 - **Node.js 18+** (for the MCP server)
-- **Autodesk Revit 2020 - 2026** (any supported version)
+- **Autodesk Revit 2020 - 2027** (any supported version)
 
 ## Quick Start (Using a Release)
 
@@ -237,10 +237,11 @@ The server compiles TypeScript to `server/build/`. During development you can ru
 
 ### Revit Plugin + Command Set
 
-Open `mcp-servers-for-revit.sln` in Visual Studio. The solution contains both the plugin and command set projects. Build configurations target Revit 2020-2026:
+Open `mcp-servers-for-revit.sln` in Visual Studio. The solution contains both the plugin and command set projects. Build configurations target Revit 2020-2027:
 
 - **Revit 2020-2024**: .NET Framework 4.8 (`Release R20` through `Release R24`)
 - **Revit 2025-2026**: .NET 8 (`Release R25`, `Release R26`)
+- **Revit 2027**: .NET 10 (`Release R27`)
 
 Building the solution automatically assembles the complete deployable layout in `plugin/bin/AddIn <year> <config>/` - the command set is copied into the plugin's `Commands/` folder as part of the build.
 
@@ -266,7 +267,7 @@ mcp-servers-for-revit/
 
 1. Run the [Prepare Release workflow](.github/workflows/prepare-release.yml) (Actions tab → "Prepare Release" → Run workflow, or `gh workflow run prepare-release.yml -f version=X.Y.Z`). It bumps `server/package.json`, `server/package-lock.json`, and `plugin/Properties/AssemblyInfo.cs` on a new `release/vX.Y.Z` branch and opens a PR into `main`.
 2. Review and merge the PR.
-3. Merging triggers the [release workflow](.github/workflows/release.yml), which tags the merge commit, builds the Revit plugin + command set for Revit 2020-2026, and creates a GitHub release with `mcp-servers-for-revit-vX.Y.Z-Revit<year>.zip` assets.
+3. Merging triggers the [release workflow](.github/workflows/release.yml), which tags the merge commit, builds the Revit plugin + command set for Revit 2020-2027, and creates a GitHub release with `mcp-servers-for-revit-vX.Y.Z-Revit<year>.zip` assets.
 
 > [!NOTE]
 > This fork does not publish to npm — the [`mcp-server-for-revit`](https://www.npmjs.com/package/mcp-server-for-revit) package name belongs to the upstream project.

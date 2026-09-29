@@ -24,4 +24,4 @@ F1 (unauthenticated socket) and F2 (arbitrary code execution) are fixed — see
 
 ## Other
 
-- No Revit 2027 build configuration or CI job exists yet; Formwork (a related project) targets 2027. A port is possible since the SDK publishes a `2027.0.0.5` package, but nothing here has been built/tested against it.
+- Revit 2027 build support was added (`R27` configs, `net10.0-windows`), but the `tests/commandset/` TUnit integration harness (`Nice3point.Revit.Sdk`-based) still only maps to `Debug.R26`/`Release.R26` — no `Debug.R27`/`Release.R27` test configuration exists. Add one if/when `Nice3point.TUnit.Revit` publishes a 2027 package and there's a Revit 2027 install to run tests against.

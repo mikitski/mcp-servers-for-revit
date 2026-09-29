@@ -5,6 +5,14 @@ for context that doesn't belong in `CLAUDE.md` (instructions), `CHANGELOG.md`
 (shipped changes), or `BACKLOG.md`/`TODO.md` (open work). Newest entries at
 the top.
 
+## 2026-09-29
+
+- Merged PR #3 (build.yml, manual-verification.md, Node 22 fix) into `main` (`f274538`).
+- User's only Revit install is 2027, which this repo didn't support at all (no `R27` config anywhere). Confirmed via NuGet that `RevitMCPSDK` (`2027.0.0.5`) and the `Nice3point.Revit.Api.*`/`Toolkit`/`Extensions` packages (`2027.x`) are published, so did the port: added `R27` configs to both `.csproj` files and the `.sln` (`net10.0-windows10.0.19041.0` — Revit 2027 moved from .NET 8 to .NET 10), and R27 build steps to `build.yml`/`release.yml` (which also needed `actions/setup-dotnet` to install .NET 10 SDK alongside 8, since they're different major versions).
+- Docker-verifying R27 caught a real API break: `GeometryUtils.FindIntersection` used `Curve.Intersect(Curve, out IntersectionResultArray)`, which Revit 2027 actually removed (2026 had already flagged it obsolete, pointing at a replacement). It had zero callers, so deleted it rather than porting to the new API blind.
+- Learned the hard way: switching Docker SDK major-version images (8.0 → 10.0 → 8.0 again) against the same uncommitted `obj/`/`bin/` output corrupts the NuGet lock file cross-version (`Cannot compare the value of a token type 'Number' to text`) — not a real code bug, just don't reuse `obj/` across SDK versions. Documented in `CLAUDE.md`.
+- Port only verified by cross-compiling in Docker (`EnableWindowsTargeting=true`) — nothing has run inside actual Revit 2027 yet. That's still the open item in `TODO.md`.
+
 ## 2026-09-24
 
 - Merged PR #2 (F1/F2 security fixes, security review, tracking docs) into `main` (`4addbb6`).
