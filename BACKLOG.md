@@ -25,4 +25,3 @@ F1 (unauthenticated socket) and F2 (arbitrary code execution) are fixed — see
 ## Other
 
 - No Revit 2027 build configuration or CI job exists yet; Formwork (a related project) targets 2027. A port is possible since the SDK publishes a `2027.0.0.5` package, but nothing here has been built/tested against it.
-- No CI workflow builds the solution on pull requests — the only Windows builds happen in the release workflow after a version-bump merge. This means C# changes are currently unverified by CI until a release is cut (see `docs/security-reviews/2026-09-21-security-review.md` for how local builds are verified via Docker instead).

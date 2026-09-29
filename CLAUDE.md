@@ -97,7 +97,7 @@ docker run --rm -v "$(pwd)":/repo -w /repo mcr.microsoft.com/dotnet/sdk:8.0 \
   dotnet build commandset/RevitMCPCommandSet.csproj -c "Debug R26" -p:EnableWindowsTargeting=true
 ```
 
-This is a useful pre-PR sanity check for C# syntax/type errors, but it is not a substitute for a real build+run against Revit (see Testing below) and doesn't replace CI.
+This is a useful pre-PR sanity check for C# syntax/type errors, but it is not a substitute for a real build+run against Revit (see Testing below), and it's a fallback for local iteration — `.github/workflows/build.yml` (below) is the authoritative build.
 
 If `docker pull`/`docker run` fails with a credential-helper error (`error getting credentials`, not an actual auth failure), the `credsStore` configured in `~/.docker/config.json` is broken in this environment; work around it per-invocation with an isolated `DOCKER_CONFIG` pointed at a directory holding just `{}`, rather than editing the real Docker config:
 
@@ -105,6 +105,10 @@ If `docker pull`/`docker run` fails with a credential-helper error (`error getti
 mkdir -p /tmp/docker-config-anon && echo '{}' > /tmp/docker-config-anon/config.json
 export DOCKER_CONFIG=/tmp/docker-config-anon
 ```
+
+### Getting a real Windows-built package (no local build needed)
+
+`.github/workflows/build.yml` builds the MCP server and every supported Revit version on a real Windows GitHub Actions runner and uploads the result as a downloadable artifact — this is how to get a build to manually install and test on an actual Revit machine, with nothing installed locally at all. It runs automatically on PRs touching `plugin/`/`commandset/`/`server/`, and can also be triggered manually (Actions tab → "Build" → Run workflow, or `gh workflow run build.yml`). See `docs/manual-verification.md` for the full install-and-smoke-test procedure.
 
 ### Integration tests (`tests/commandset/`, Windows only, requires a running Revit)
 

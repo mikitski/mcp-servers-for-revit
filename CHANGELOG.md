@@ -14,7 +14,12 @@ For the full commit history, use `git log`.
 - Release process moved fully into GitHub Actions: `prepare-release.yml` bumps versions on a `release/vX.Y.Z` branch and opens a PR; merging it triggers `release.yml`, which tags the merge commit and builds/publishes the GitHub release. Replaces the old local `scripts/release.ps1` + manual `git push origin main --tags` flow.
 - Removed npm publishing — this fork doesn't own the `mcp-server-for-revit` package name on npm.
 
+### Fixed
+- `release.yml`'s build job used Node 18 to build `server/`, which fails outright (`better-sqlite3` has no Node 18 prebuild and its native compile needs Visual Studio build tools the runner doesn't have). This was never hit because no real release had run since the GHA migration — caught when `build.yml`'s first live run failed the same way. Bumped both workflows to Node 22, matching `server/package.json`'s `engines.node` requirement.
+
 ### Added
 - `CLAUDE.md` documenting architecture, dev commands, and the development workflow.
 - `docs/security-reviews/` with the internal security review this fork is responding to.
 - `BACKLOG.md`, `TODO.md`, `PROGRESS.md` for tracking work outside of `CLAUDE.md`.
+- `.github/workflows/build.yml`: build-only workflow (manual dispatch, plus automatic runs on PRs touching `plugin/`/`commandset/`/`server/`) that uploads a real Windows-built package as a workflow artifact — no local `dotnet` install needed to get a testable build, and PRs are now actually build-checked before merge.
+- `docs/manual-verification.md`: step-by-step instructions for installing a build on a real Revit machine and smoke-testing the F1 auth fix.
