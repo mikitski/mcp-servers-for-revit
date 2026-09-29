@@ -194,22 +194,6 @@ public static class GeometryUtils
     }
 
     /// <summary>
-    ///     Finds intersection of two lines
-    /// </summary>
-    /// <param name="line1">First line</param>
-    /// <param name="line2">Second line</param>
-    /// <returns>Intersection point or null if none</returns>
-    public static XYZ FindIntersection(Line line1, Line line2)
-    {
-        // Implement algorithm to calculate intersection
-        // Simple method: use Revit API to find intersection
-        var results = new IntersectionResultArray();
-        if (line1.Intersect(line2, out results) == SetComparisonResult.Overlap && results.Size > 0)
-            return results.get_Item(0).XYZPoint;
-        return null;
-    }
-
-    /// <summary>
     ///     Finds normal vector of a plane
     /// </summary>
     /// <param name="p1">First point on plane</param>

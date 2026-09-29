@@ -15,7 +15,7 @@ Windows runner. You only need Revit itself on the machine you'll test with.
 2. Click **Run workflow** → select your branch → **Run workflow**.
    (A build also runs automatically on every PR that touches `plugin/`, `commandset/`, or `server/` — if you're verifying a PR, you can use that run's artifact instead of starting a new one.)
 3. Wait for the run to finish (a few minutes), then open it and download the artifact named `revit-mcp-plugin-build-<run id>` from the **Artifacts** section at the bottom of the run summary page.
-4. Unzip it. You'll get one subfolder per supported Revit version: `Revit2020/`, `Revit2021/`, ... `Revit2026/`. Each one is a complete, self-contained AddIn layout — the same thing a release ZIP contains.
+4. Unzip it. You'll get one subfolder per supported Revit version: `Revit2020/`, `Revit2021/`, ... `Revit2027/`. Each one is a complete, self-contained AddIn layout — the same thing a release ZIP contains.
 
 ## 2. Install on the Revit machine
 
