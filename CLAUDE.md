@@ -53,6 +53,7 @@ The Revit↔MCP socket (`plugin/Core/SocketService.cs`) binds loopback only and 
 - Every request must echo that token back in a top-level `token` field. `ProcessJsonRPCRequest` rejects a missing/mismatched token before it ever touches the command registry.
 - `server/src/utils/authToken.ts` reads the same file; `SocketClient.ts` sends the token on every outgoing command.
 - Changing this protocol is a breaking change: the plugin and server must always be updated together (they already ship together in each release).
+- **Running the server under WSL** (e.g. as a `node <path>` entry in Claude Code's config, the same pattern as other local MCP servers) means `process.env.LOCALAPPDATA` isn't set and `os.homedir()` returns the Linux home, not the Windows one — the token file would never be found. `authToken.ts` detects WSL (`/proc/version` contains "microsoft") and shells out to `cmd.exe /c echo %LOCALAPPDATA%` to get the real Windows path, then translates it to its `/mnt/<drive>/...` equivalent. This requires WSL's Windows interop (`cmd.exe` reachable from the Linux side), which is the default.
 
 `send_code_to_revit` (arbitrary C# execution in Revit) has been removed from this fork and has no in-repo replacement. If it's ever reintroduced, it needs an explicit compilation reference allowlist, syntax-level rejection of `System.Diagnostics`/`System.IO`/`System.Net`/`System.Reflection`, a timeout, `AssemblyLoadContext` isolation, and an audit log — see `docs/security-reviews/2026-09-21-security-review.md` (finding F2) for the full threat model.
 

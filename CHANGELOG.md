@@ -16,6 +16,7 @@ For the full commit history, use `git log`.
 
 ### Fixed
 - `release.yml`'s build job used Node 18 to build `server/`, which fails outright (`better-sqlite3` has no Node 18 prebuild and its native compile needs Visual Studio build tools the runner doesn't have). This was never hit because no real release had run since the GHA migration — caught when `build.yml`'s first live run failed the same way. Bumped both workflows to Node 22, matching `server/package.json`'s `engines.node` requirement.
+- `server/src/utils/authToken.ts` couldn't find the session token file when the server runs as a WSL/Linux process (e.g. `node <path>` in Claude Code's config, rather than the README's `cmd /c npx ...`) — `LOCALAPPDATA` isn't set and `os.homedir()` returns the Linux home. Now detects WSL and asks `cmd.exe` for the real Windows path, translating it to `/mnt/<drive>/...`.
 
 ### Added
 - `CLAUDE.md` documenting architecture, dev commands, and the development workflow.
