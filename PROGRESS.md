@@ -5,6 +5,15 @@ for context that doesn't belong in `CLAUDE.md` (instructions), `CHANGELOG.md`
 (shipped changes), or `BACKLOG.md`/`TODO.md` (open work). Newest entries at
 the top.
 
+## 2026-09-30
+
+- Merged PR #4 (Revit 2027 support) and PR #5 (WSL token-path fix) into `main`.
+- User downloaded a `build.yml` artifact, extracted the `Revit2027/` bundle, and I installed it into `%AppData%\Autodesk\Revit\Addins\2027\` (no conflicts with the existing `Formwork` install there) and registered `mcp-server-for-revit` in Claude Code's user-scope config (`node <path-to-server/build/index.js>`, same pattern as `formwork`).
+- First live tool call failed with "connect to revit client failed" even after PR #5's token-path fix. Diagnosed from first principles: `netstat` via `cmd.exe` showed the plugin correctly listening on `127.0.0.1:8080` (PID matched `Revit.exe`), but a raw WSL `bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080'` also got refused — proving WSL2's loopback forwarding doesn't work WSL→Windows in this setup (formwork's own port 8765 was equally unreachable directly from WSL). User confirmed their other (working) sessions use "a PowerShell relay" for this instead.
+- Implemented that: `server/src/utils/windowsRelay.ts` shells out to `powershell.exe -ExecutionPolicy Bypass` per command, relaying the JSON-RPC payload over stdin/stdout. Factored the shared WSL/LOCALAPPDATA detection out of `authToken.ts` into `server/src/utils/windowsEnv.ts` so both modules use it. Hit and fixed one real snag along the way: PowerShell's default execution policy blocked the unsigned relay script outright.
+- Verified for real against the live Revit 2027 instance (which was mid-way through an unrelated user test — did not restart Revit or touch any documents): `get_current_view_info` returned actual view data end-to-end. Accidentally used `say_hello` (a modal-dialog command) for an earlier test attempt before switching to read-only commands - its `ExternalEvent` may still be queued and could pop a dialog later; flagged to the user rather than hidden.
+- This is the deepest real-environment verification this whole effort has had: loopback bind, token auth, and now cross-WSL-boundary connectivity all confirmed working against actual running Revit 2027, not just Docker cross-compiles.
+
 ## 2026-09-29
 
 - Merged PR #3 (build.yml, manual-verification.md, Node 22 fix) into `main` (`f274538`).

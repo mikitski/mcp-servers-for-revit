@@ -1,5 +1,9 @@
 import * as net from "net";
 import { readSessionToken } from "./authToken.js";
+import { isWsl } from "./windowsEnv.js";
+import { sendViaWindowsRelay } from "./windowsRelay.js";
+
+const COMMAND_TIMEOUT_MS = 120000; // 2分钟超时
 
 export class RevitClientConnection {
   host: string;
@@ -8,12 +12,26 @@ export class RevitClientConnection {
   isConnected: boolean = false;
   responseCallbacks: Map<string, (response: string) => void> = new Map();
   buffer: string = "";
+  // WSL2's loopback forwarding is commonly Windows->WSL only in practice; a
+  // WSL process connecting out to 127.0.0.1 on the Windows host can be
+  // refused outright even though the same address is reachable from a native
+  // Windows process. When running under WSL, relay each command through
+  // powershell.exe instead of connecting directly (see windowsRelay.ts).
+  private readonly useWindowsRelay: boolean;
 
   constructor(host: string, port: number) {
     this.host = host;
     this.port = port;
+    this.useWindowsRelay = isWsl();
     this.socket = new net.Socket();
-    this.setupSocketListeners();
+
+    if (this.useWindowsRelay) {
+      // No persistent connection to establish - each sendCommand relays
+      // through a fresh native Windows process.
+      this.isConnected = true;
+    } else {
+      this.setupSocketListeners();
+    }
   }
 
   private setupSocketListeners(): void {
@@ -53,7 +71,7 @@ export class RevitClientConnection {
   }
 
   public connect(): boolean {
-    if (this.isConnected) {
+    if (this.useWindowsRelay || this.isConnected) {
       return true;
     }
 
@@ -67,6 +85,7 @@ export class RevitClientConnection {
   }
 
   public disconnect(): void {
+    if (this.useWindowsRelay) return;
     this.socket.end();
     this.isConnected = false;
   }
@@ -91,27 +110,66 @@ export class RevitClientConnection {
     }
   }
 
+  private buildCommandObject(command: string, params: any) {
+    return {
+      jsonrpc: "2.0",
+      method: command,
+      params,
+      id: this.generateRequestId(),
+      // Echoes the per-session token the plugin generated in SocketService,
+      // required since the socket has no other authentication (see the
+      // security review's F1 finding).
+      token: readSessionToken(),
+    };
+  }
+
   public sendCommand(command: string, params: any = {}): Promise<any> {
+    return this.useWindowsRelay
+      ? this.sendCommandViaRelay(command, params)
+      : this.sendCommandViaSocket(command, params);
+  }
+
+  // Blocks this process while the relay runs. Acceptable here because
+  // withRevitConnection() already serializes all Revit calls to one at a
+  // time via its mutex, so nothing else could make progress concurrently
+  // anyway; a fully async spawn would be nicer for MCP protocol
+  // responsiveness but adds real complexity for little practical gain in a
+  // single-user local tool.
+  private async sendCommandViaRelay(command: string, params: any): Promise<any> {
+    const commandObj = this.buildCommandObject(command, params);
+    const responseText = sendViaWindowsRelay(
+      this.host,
+      this.port,
+      JSON.stringify(commandObj),
+      COMMAND_TIMEOUT_MS
+    );
+
+    let response: any;
+    try {
+      response = JSON.parse(responseText);
+    } catch (error) {
+      throw new Error(
+        `Failed to parse response: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+
+    if (response.error) {
+      throw new Error(response.error.message || "Unknown error from Revit");
+    }
+    return response.result;
+  }
+
+  private sendCommandViaSocket(command: string, params: any = {}): Promise<any> {
     return new Promise((resolve, reject) => {
       try {
         if (!this.isConnected) {
           this.connect();
         }
 
-        // 生成请求ID
-        const requestId = this.generateRequestId();
-
-        // 创建符合JSON-RPC标准的请求对象
-        const commandObj = {
-          jsonrpc: "2.0",
-          method: command,
-          params: params,
-          id: requestId,
-          // Echoes the per-session token the plugin generated in SocketService,
-          // required since the socket has no other authentication (see the
-          // security review's F1 finding).
-          token: readSessionToken(),
-        };
+        const commandObj = this.buildCommandObject(command, params);
+        const requestId = commandObj.id;
 
         // 存储回调函数
         this.responseCallbacks.set(requestId, (responseData) => {
@@ -143,7 +201,7 @@ export class RevitClientConnection {
             this.responseCallbacks.delete(requestId);
             reject(new Error(`Command timed out after 2 minutes: ${command}`));
           }
-        }, 120000); // 2分钟超时
+        }, COMMAND_TIMEOUT_MS);
       } catch (error) {
         reject(error);
       }
