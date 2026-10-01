@@ -5,6 +5,13 @@ for context that doesn't belong in `CLAUDE.md` (instructions), `CHANGELOG.md`
 (shipped changes), or `BACKLOG.md`/`TODO.md` (open work). Newest entries at
 the top.
 
+## 2026-09-30 (later)
+
+- Live-tested the WSL relay (PR #6) against real Revit 2027 from Claude Code itself: `analyze_model_statistics` succeeded on the first call after reconnecting (real project data, 20709 elements). Revit was then restarted independently (PID changed); after the user clicked Start again and the socket was confirmed listening, the *same* long-running MCP server process started failing every subsequent call with an opaque `execFileSync` "Command failed" error and no stderr.
+- Spent real effort isolating this: confirmed the relay script file on disk was intact, confirmed a fresh manual invocation of the exact same command (same host/port/payload/script) succeeded reliably every time from a plain bash shell, and ruled out several hypotheses by direct reproduction - missing PATH (produces a distinct `ENOENT`, not this), `execFileSync`'s own timeout killing the child (produces `ETIMEDOUT`+`SIGTERM`, not this), the relay script throwing (produces visible stderr, not this), and WSL's UNC-path CWD fallback when launched from outside `/mnt/c` (reproduced the UNC fallback itself, but the relay still succeeded despite it).
+- Net result: fresh processes work every time; the one long-running server process that was already alive before Revit restarted started failing consistently after. Root cause not identified - something accumulating in *that process's* state across repeated calls is the leading theory, not a problem with the relay mechanism itself (which keeps working from every fresh invocation). Recommended the user reconnect (`/mcp`) to respawn the server process fresh, rather than keep debugging the live process further.
+- Improved `windowsRelay.ts`'s error reporting either way (it was uselessly opaque - just "Command failed: powershell.exe ..." with no exit code/stdout/stderr), so a recurrence will actually be diagnosable next time instead of starting from zero again.
+
 ## 2026-09-30
 
 - Merged PR #4 (Revit 2027 support) and PR #5 (WSL token-path fix) into `main`.
