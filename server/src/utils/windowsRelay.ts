@@ -86,30 +86,53 @@ export function sendViaWindowsRelay(
     );
   }
 
-  return execFileSync(
-    "powershell.exe",
-    [
-      "-NoProfile",
-      "-NonInteractive",
-      // Scoped to this one process invocation only - does not change the
-      // system-wide execution policy, which commonly blocks unsigned .ps1
-      // files by default (e.g. "Restricted" or "AllSigned").
-      "-ExecutionPolicy",
-      "Bypass",
-      "-File",
-      scriptPath,
-      "-TargetHost",
-      targetHost,
-      "-Port",
-      String(port),
-      "-TimeoutMs",
-      String(timeoutMs),
-    ],
-    {
-      input: payload,
-      encoding: "utf8",
-      timeout: timeoutMs + 10_000,
-      maxBuffer: 16 * 1024 * 1024,
-    }
-  );
+  try {
+    return execFileSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        // Scoped to this one process invocation only - does not change the
+        // system-wide execution policy, which commonly blocks unsigned .ps1
+        // files by default (e.g. "Restricted" or "AllSigned").
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        scriptPath,
+        "-TargetHost",
+        targetHost,
+        "-Port",
+        String(port),
+        "-TimeoutMs",
+        String(timeoutMs),
+      ],
+      {
+        input: payload,
+        encoding: "utf8",
+        timeout: timeoutMs + 10_000,
+        maxBuffer: 16 * 1024 * 1024,
+      }
+    );
+  } catch (error: any) {
+    // execFileSync's own error.message is just "Command failed: <cmd> <args>"
+    // with no indication of *why* - surface exit code/signal/stdout/stderr
+    // explicitly, since a killed-with-no-stderr process (e.g. the OS timeout
+    // firing, or something else terminating it) looks identical to a clean
+    // non-zero exit otherwise.
+    const details = [
+      error?.signal ? `signal=${error.signal}` : null,
+      error?.status !== undefined && error?.status !== null
+        ? `exitCode=${error.status}`
+        : null,
+      error?.stdout ? `stdout=${JSON.stringify(String(error.stdout))}` : null,
+      error?.stderr ? `stderr=${JSON.stringify(String(error.stderr))}` : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    throw new Error(
+      `Windows relay failed${details ? ` (${details})` : ""}: ${
+        error?.message ?? String(error)
+      }`
+    );
+  }
 }
