@@ -1,7 +1,7 @@
 import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import { resolveWindowsLocalAppData } from "./windowsEnv.js";
+import { resolveWindowsLocalAppData, retrySpawn } from "./windowsEnv.js";
 
 // WSL2's loopback forwarding is commonly one-directional in practice
 // (Windows -> WSL works; a WSL process connecting out to 127.0.0.1 on the
@@ -39,7 +39,10 @@ $client.Close()
 [Console]::Out.Write([System.Text.Encoding]::UTF8.GetString($buffer, 0, $read))
 `;
 
-let relayScriptWindowsPath: string | null | undefined;
+// Only a successful write is cached - same reasoning as
+// windowsEnv.ts's resolveWindowsLocalAppData: don't let one transient
+// failure permanently break every subsequent call in a long-running process.
+let relayScriptWindowsPath: string | undefined;
 
 // Writes the relay script (once per process) into the same directory the
 // plugin uses for its session token, and returns its path in Windows syntax
@@ -50,10 +53,7 @@ function ensureRelayScript(): string | null {
   if (relayScriptWindowsPath !== undefined) return relayScriptWindowsPath;
 
   const winLocalAppData = resolveWindowsLocalAppData();
-  if (!winLocalAppData) {
-    relayScriptWindowsPath = null;
-    return relayScriptWindowsPath;
-  }
+  if (!winLocalAppData) return null;
 
   try {
     const dirWsl = path.join(winLocalAppData.wslPath, "revit-mcp-plugin");
@@ -63,8 +63,7 @@ function ensureRelayScript(): string | null {
     relayScriptWindowsPath = `${winLocalAppData.windowsPath}\\revit-mcp-plugin\\relay.ps1`;
     return relayScriptWindowsPath;
   } catch {
-    relayScriptWindowsPath = null;
-    return relayScriptWindowsPath;
+    return null;
   }
 }
 
@@ -87,31 +86,33 @@ export function sendViaWindowsRelay(
   }
 
   try {
-    return execFileSync(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        // Scoped to this one process invocation only - does not change the
-        // system-wide execution policy, which commonly blocks unsigned .ps1
-        // files by default (e.g. "Restricted" or "AllSigned").
-        "-ExecutionPolicy",
-        "Bypass",
-        "-File",
-        scriptPath,
-        "-TargetHost",
-        targetHost,
-        "-Port",
-        String(port),
-        "-TimeoutMs",
-        String(timeoutMs),
-      ],
-      {
-        input: payload,
-        encoding: "utf8",
-        timeout: timeoutMs + 10_000,
-        maxBuffer: 16 * 1024 * 1024,
-      }
+    return retrySpawn(() =>
+      execFileSync(
+        "powershell.exe",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          // Scoped to this one process invocation only - does not change the
+          // system-wide execution policy, which commonly blocks unsigned .ps1
+          // files by default (e.g. "Restricted" or "AllSigned").
+          "-ExecutionPolicy",
+          "Bypass",
+          "-File",
+          scriptPath,
+          "-TargetHost",
+          targetHost,
+          "-Port",
+          String(port),
+          "-TimeoutMs",
+          String(timeoutMs),
+        ],
+        {
+          input: payload,
+          encoding: "utf8",
+          timeout: timeoutMs + 10_000,
+          maxBuffer: 16 * 1024 * 1024,
+        }
+      )
     );
   } catch (error: any) {
     // execFileSync's own error.message is just "Command failed: <cmd> <args>"
